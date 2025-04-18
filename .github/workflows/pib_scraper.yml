@@ -46,12 +46,12 @@ jobs:
           AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
           aws s3 cp press_releases.jsonl s3://$RAW_BUCKET/$(date +'%Y/%m/%d')/press_releases.jsonl
           
-      - name: Process with AI
+      - name: Process with OpenRouter
         run: |
           python process_with_ai.py \
-            --input s3://$RAW_BUCKET/$(date +'%Y/%m/%d')/press_releases.jsonl \
-            --output s3://$PROCESSED_BUCKET/$(date +'%Y/%m/%d')/processed.json \
-            --api-key $OPENROUTER_API_KEY
+            --input s3://${{ env.RAW_BUCKET }}/$(date +'%Y/%m/%d')/press_releases.jsonl \
+            --output s3://${{ env.PROCESSED_BUCKET }}/$(date +'%Y/%m/%d')/processed.json \
+            --api-key ${{ secrets.OPENROUTER_API_KEY }}
           
       # Optional: Trigger frontend update (e.g., via AWS Lambda)
       - name: Trigger Update
