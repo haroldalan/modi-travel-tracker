@@ -1,6 +1,6 @@
-// Configuration - Updated to use your exact S3 path pattern
+// Configuration
 const S3_BASE_URL = "https://processedmodiscraped.s3.ap-south-1.amazonaws.com";
-const CACHE_BUSTER = `?t=${Date.now()}`;
+const DATE_FORMAT = { year: 'numeric', month: 'long' };
 
 // DOM Elements
 const globeContainer = document.getElementById('globe-container');
@@ -10,9 +10,9 @@ const prevMonthBtn = document.getElementById('prev-month');
 const nextMonthBtn = document.getElementById('next-month');
 
 // State
-let currentMonthIndex = 0;
-let travelData = [];
-let isLoading = true;
+let currentDate = new Date(); // Track current month being viewed
+let travelData = {}; // { "January 2023": [...locations], "February 2023": [...] }
+let availableMonths = []; // ["January 2023", "February 2023", ...]
 
 // Initialize globe
 const globe = Globe()
@@ -25,133 +25,151 @@ const globe = Globe()
     .height(window.innerHeight)
     (globeContainer);
 
-// Add loading indicator
-const loader = document.createElement('div');
-loader.style.position = 'absolute';
-loader.style.top = '50%';
-loader.style.left = '50%';
-loader.style.transform = 'translate(-50%, -50%)';
-loader.style.color = 'white';
-loader.style.backgroundColor = 'rgba(0,0,0,0.7)';
-loader.style.padding = '20px';
-loader.style.borderRadius = '5px';
-loader.style.zIndex = '100';
-loader.textContent = 'Loading travel data...';
-document.body.appendChild(loader);
+// Load data for a specific month
+async function loadMonthData(date) {
+    const monthYear = date.toLocaleDateString('en-US', DATE_FORMAT);
+    
+    // If we already have this month's data, return it
+    if (travelData[monthYear]) {
+        return travelData[monthYear];
+    }
 
-// Add debug console
-const debugConsole = document.createElement('div');
-debugConsole.style.position = 'absolute';
-debugConsole.style.bottom = '10px';
-debugConsole.style.left = '10px';
-debugConsole.style.color = 'white';
-debugConsole.style.backgroundColor = 'rgba(0,0,0,0.5)';
-debugConsole.style.padding = '10px';
-debugConsole.style.borderRadius = '5px';
-debugConsole.style.zIndex = '1000';
-debugConsole.style.fontFamily = 'monospace';
-debugConsole.style.fontSize = '12px';
-debugConsole.style.maxHeight = '100px';
-debugConsole.style.overflow = 'auto';
-document.body.appendChild(debugConsole);
-
-function logDebug(message) {
-    debugConsole.textContent += `\n${new Date().toLocaleTimeString()}: ${message}`;
-    debugConsole.scrollTop = debugConsole.scrollHeight;
-}
-
-// Main data loader - Updated to use your date-based S3 path
-async function loadTravelData() {
     try {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        
-        const s3Path = `${year}/${month}/${day}/processed.json`;
-        const s3Url = `${S3_BASE_URL}/${s3Path}${CACHE_BUSTER}`;
-        
-        logDebug(`Fetching data from: ${s3Url}`);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const s3Url = `${S3_BASE_URL}/${year}/${month}/processed.json?t=${Date.now()}`;
         
         const response = await fetch(s3Url);
-        logDebug(`Response status: ${response.status}`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const rawData = await response.json();
-        logDebug(`Received data with ${rawData.locations?.length || 0} locations`);
         
-        // Transform data to match your frontend format
-        const monthlyData = {};
-        
-        rawData.locations.forEach(loc => {
-            const date = new Date(loc.date || rawData.date);
-            const monthYear = date.toLocaleString('default', { 
-                month: 'long', 
+        // Process locations for this month
+        const locations = rawData.locations.map(loc => ({
+            lat: loc.lat,
+            lng: loc.lng,
+            name: loc.name,
+            date: new Date(loc.date).toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
                 year: 'numeric' 
-            });
-            
-            if (!monthlyData[monthYear]) {
-                monthlyData[monthYear] = [];
-            }
-            
-            monthlyData[monthYear].push({
-                lat: loc.lat,
-                lng: loc.lng,
-                name: loc.name,
-                date: date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric', 
-                    year: 'numeric' 
-                }),
-                summary: loc.actions?.map(action => `• ${action}`) || []
-            });
-        });
-        
-        const result = Object.entries(monthlyData).map(([month, locations]) => ({
-            month,
-            locations
+            }),
+            summary: loc.actions?.map(action => `• ${action}`) || []
         }));
         
-        logDebug(`Transformed into ${result.length} months of data`);
-        return result;
+        // Store the processed data
+        travelData[monthYear] = locations;
+        
+        // Update available months list if needed
+        if (!availableMonths.includes(monthYear)) {
+            availableMonths.push(monthYear);
+            availableMonths.sort((a, b) => new Date(a) - new Date(b));
+        }
+        
+        return locations;
         
     } catch (error) {
-        logDebug(`Error: ${error.message}`);
-        console.error("Data loading failed:", error);
-        return []; // Return empty array instead of fallback data
+        console.error(`Failed to load data for ${monthYear}:`, error);
+        return []; // Return empty array if no data available
     }
 }
 
-// Initialize with live data
-async function initialize() {
-    travelData = await loadTravelData();
-    isLoading = false;
+// Update globe with current month's data
+async function updateGlobe() {
+    const monthYear = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
+    const locations = await loadMonthData(currentDate);
     
-    if (travelData.length > 0) {
-        loader.remove();
-        updateGlobe();
+    timeDisplay.textContent = monthYear;
+    
+    // Update navigation buttons
+    prevMonthBtn.disabled = availableMonths.indexOf(monthYear) === 0;
+    nextMonthBtn.disabled = availableMonths.indexOf(monthYear) === availableMonths.length - 1;
+    
+    // Create arcs between locations
+    const arcs = [];
+    for (let i = 0; i < locations.length - 1; i++) {
+        arcs.push({
+            startLat: locations[i].lat,
+            startLng: locations[i].lng,
+            endLat: locations[i+1].lat,
+            endLng: locations[i+1].lng,
+            color: [
+                ['rgba(255, 102, 0, 0.6)', 'rgba(255, 102, 0, 0.3)'],
+                ['rgba(255, 102, 0, 0.6)', 'rgba(255, 102, 0, 0.3)']
+            ]
+        });
+    }
+    
+    // Update globe
+    globe
+        .pointsData(locations)
+        .pointLat(d => d.lat)
+        .pointLng(d => d.lng)
+        .pointAltitude(0.01)
+        .pointRadius(0.25)
+        .pointColor(() => 'rgba(255, 102, 0, 0.8)')
+        .pointLabel(d => `
+            <div style="text-align:center;">
+                <div><b>${d.name}</b></div>
+                <div>${d.date}</div>
+            </div>
+        `)
+        .onPointHover(handlePointHover)
+        .onPointClick(handlePointClick)
+        .arcsData(arcs)
+        .arcColor('color')
+        .arcDashLength(0.5)
+        .arcDashGap(1)
+        .arcDashAnimateTime(2000)
+        .arcStroke(0.5)
+        .arcsTransitionDuration(1000);
+    
+    // Center view
+    if (locations.length > 0) {
+        const allLats = locations.map(d => d.lat);
+        const allLngs = locations.map(d => d.lng);
+        const centerLat = (Math.min(...allLats) + Math.max(...allLats)) / 2;
+        const centerLng = (Math.min(...allLngs) + Math.max(...allLngs)) / 2;
         
-        // Auto-refresh every 5 minutes
-        setInterval(async () => {
-            const newData = await loadTravelData();
-            if (JSON.stringify(newData) !== JSON.stringify(travelData)) {
-                travelData = newData;
-                currentMonthIndex = Math.min(currentMonthIndex, travelData.length - 1);
-                updateGlobe();
-            }
-        }, 300000);
-    } else {
-        loader.textContent = 'No travel data available for today';
-        setTimeout(() => loader.remove(), 3000);
+        globe.controls().autoRotateSpeed = 0.5;
+        globe.pointOfView({ lat: centerLat, lng: centerLng, altitude: 2 }, 1000);
     }
 }
 
-// Rest of your existing functions remain exactly the same:
-// updateGlobe(), handlePointHover(), handlePointClick(), 
-// event listeners, etc. (keep all that code)
+// Navigation controls
+prevMonthBtn.addEventListener('click', () => {
+    const currentMonthIndex = availableMonths.indexOf(
+        currentDate.toLocaleDateString('en-US', DATE_FORMAT)
+    );
+    if (currentMonthIndex > 0) {
+        currentDate = new Date(availableMonths[currentMonthIndex - 1]);
+        updateGlobe();
+    }
+});
 
-// Start the application
-initialize();
+nextMonthBtn.addEventListener('click', () => {
+    const currentMonthIndex = availableMonths.indexOf(
+        currentDate.toLocaleDateString('en-US', DATE_FORMAT)
+    );
+    if (currentMonthIndex < availableMonths.length - 1) {
+        currentDate = new Date(availableMonths[currentMonthIndex + 1]);
+        updateGlobe();
+    }
+});
+
+// Keep your existing handlers exactly as they were:
+function handlePointHover(point) {
+    /* ... your existing hover handler ... */
+}
+
+function handlePointClick(point) {
+    /* ... your existing click handler ... */
+}
+
+// Initialize
+window.addEventListener('resize', () => {
+    globe.width(window.innerWidth).height(window.innerHeight);
+});
+
+// Start with current month
+updateGlobe();
