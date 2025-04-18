@@ -8,8 +8,8 @@ on:
 
 env:
   AWS_REGION: 'ap-south-1' # Or your preferred region
-  RAW_BUCKET: 'rawModiScraped'
-  PROCESSED_BUCKET: 'processedModiScraped'
+  RAW_BUCKET: 'rawmodiscraped'
+  PROCESSED_BUCKET: 'processedmodiscraped'
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
