@@ -2,65 +2,72 @@ name: PIB Scraper and Processor
 
 on:
   schedule:
-    # Runs at 10 PM IST (16:30 UTC) every day
-    - cron: '30 16 * * *'
-  workflow_dispatch: # Allows manual triggering
+    - cron: '30 16 * * *'  # 10 PM IST
+  workflow_dispatch:
 
 env:
-  AWS_REGION: 'ap-south-1' # Or your preferred region
+  AWS_REGION: 'ap-south-1'
   RAW_BUCKET: 'rawmodiscraped'
   PROCESSED_BUCKET: 'processedmodiscraped'
-  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  PYTHON_VERSION: '3.10'
+  PIP_CACHE_DIR: ~/.cache/pip
 
 jobs:
   scrape-and-process:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # Adjust as needed
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
-        
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-          
-      - name: Install dependencies
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'  # Enable pip caching
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        id: pip-cache
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.local/lib/python${{ env.PYTHON_VERSION }}/site-packages
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver
           python -m nltk.downloader punkt
-          pip install awscli openai
-          
+
       - name: Run scraper
-        run: |
-          python pmScraper.py --date $(date +'%Y-%m-%d')
-          
+        run: python pmScraper.py --date $(date +'%Y-%m-%d')
+
       - name: Upload raw data to S3
         run: |
-          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
-          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
-          aws s3 cp press_releases.jsonl s3://$RAW_BUCKET/$(date +'%Y/%m/%d')/press_releases.jsonl
-          
+          python -c "
+          import boto3
+          from datetime import datetime
+          s3 = boto3.client('s3', 
+                aws_access_key_id='${{ secrets.AWS_ACCESS_KEY_ID }}',
+                aws_secret_access_key='${{ secrets.AWS_SECRET_ACCESS_KEY }}')
+          s3.upload_file(
+              'press_releases.jsonl',
+              '$RAW_BUCKET',
+              f\"{datetime.now().strftime('%Y/%m/%d')}/press_releases.jsonl\"
+          )"
+
       - name: Process with OpenRouter
         run: |
           python process_with_ai.py \
-            --input s3://${{ env.RAW_BUCKET }}/$(date +'%Y/%m/%d')/press_releases.jsonl \
-            --output s3://${{ env.PROCESSED_BUCKET }}/$(date +'%Y/%m/%d')/processed.json \
+            --input s3://$RAW_BUCKET/$(date +'%Y/%m/%d')/press_releases.jsonl \
+            --output s3://$PROCESSED_BUCKET/$(date +'%Y/%m/%d')/processed.json \
             --api-key ${{ secrets.OPENROUTER_API_KEY }}
-          
-      # Optional: Trigger frontend update (e.g., via AWS Lambda)
-      - name: Trigger Update
-        if: success()
-        run: |
-          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
-          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
-          aws lambda invoke \
-            --function-name updateModiTravelFrontend \
-            --invocation-type Event \
-            --payload '{"date":"$(date +'%Y-%m-%d')"}' \
-            response.json
