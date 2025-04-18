@@ -7,11 +7,11 @@ from datetime import datetime
 import argparse
 import uuid
 from collections import defaultdict
+import os
 
 # OpenRouter API endpoint and model
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "gpt-4o-mini"
-
+MODEL = "openai/gpt-4o-mini"  # Updated to a reliable OpenRouter model
 
 def extract_daily_locations_and_actions(articles, api_key):
     """
@@ -20,15 +20,15 @@ def extract_daily_locations_and_actions(articles, api_key):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/your-repo",  # OpenRouter requires Referer
+        "HTTP-Referer": "https://github.com/your-repo",  # Required by OpenRouter
         "X-Title": "PM Modi Travel Tracker"
     }
 
-    # Combine articles into one prompt block
+    # Combine articles into one prompt block with truncation
     combined = "\n\n---\n\n".join(
-        f"Article {i+1} ({art.get('published_date','')}):\n{art.get('content','')}"
+        f"Article {i+1} ({art.get('published_date','')}):\n{art.get('content','')[:5000]}"
         for i, art in enumerate(articles)
-    )
+    )[:15000]  # Ensure total length is within limits
 
     prompt = f"""
 Analyze these press releases about PM Modi's activities for the day and extract:
@@ -53,7 +53,7 @@ Return ONLY a JSON object with this exact structure:
 }}
 
 Today's Press Releases:
-{combined[:15000]}
+{combined}
 """
 
     payload = {
@@ -62,97 +62,92 @@ Today's Press Releases:
             {"role": "system", "content": "You are an expert analyst extracting structured data from text."},
             {"role": "user", "content": prompt}
         ],
-        "response_format": {"type": "json_object"},  # enforce JSON output
+        "response_format": {"type": "json_object"},
         "temperature": 0.1,
         "max_tokens": 2000
     }
 
-    # Send the request
-    resp = requests.post(ENDPOINT, headers=headers, json=payload, timeout=45)
+    try:
+        resp = requests.post(ENDPOINT, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        
+        # Debug output
+        print(f"API Response Status: {resp.status_code}")
+        print(f"Response Preview: {resp.text[:200]}...")
 
-    # Debug output
-    print(f"⚙️  HTTP {resp.status_code} {resp.reason}")
-    print("⏺️  Body preview:", resp.text[:500])
-    resp.raise_for_status()
+        # Extract and clean JSON
+        raw = resp.json()["choices"][0]["message"]["content"]
+        cleaned = re.sub(r"```(?:json)?\s*|\s*```$", "", raw.strip())
+        result = json.loads(cleaned)
 
-    # Extract and clean JSON
-    raw = resp.json()["choices"][0]["message"]["content"]
-    cleaned = re.sub(r"```(?:json)?\s*|\s*```$", "", raw.strip())
-    result = json.loads(cleaned)
+        if not isinstance(result.get("locations"), list):
+            raise ValueError("Invalid 'locations' format in AI response")
 
-    if not isinstance(result.get("locations"), list):
-        raise ValueError("Invalid 'locations' format in AI response")
-
-    return result
-
+        return result
+    except Exception as e:
+        print(f"OpenRouter API Error: {str(e)}")
+        raise
 
 def consolidate_locations(locations):
-    """
-    Combine multiple location entries into consolidated records by name/lat/lng,
-    merging and ordering actions chronologically.
-    """
+    """Combine and organize location data"""
     grouped = defaultdict(list)
     for loc in locations:
         key = (loc.get("name"), loc.get("lat"), loc.get("lng"))
-        # pair each action with its time
         for action in loc.get("actions", []):
-            grouped[key].append((loc.get("time"), action))
+            grouped[key].append((loc.get("time", "00:00"), action))
 
     consolidated = []
     for (name, lat, lng), entries in grouped.items():
-        # sort by time (HH:MM), ignore None
-        sorted_entries = sorted(entries, key=lambda x: x[0] or "00:00")
-        flat_actions = [act for _, act in sorted_entries]
+        sorted_entries = sorted(entries, key=lambda x: x[0])
         consolidated.append({
             "name": name,
             "lat": lat,
             "lng": lng,
-            "actions": flat_actions
+            "actions": [act for _, act in sorted_entries]
         })
     return consolidated
 
-
 def process_file(input_path, output_path, api_key):
-    """
-    Read daily press releases, extract structured data via AI, consolidate locations, and save output.
-    """
-    # Create S3 client if using s3 paths
-    s3 = boto3.client('s3') if input_path.startswith('s3://') or output_path.startswith('s3://') else None
+    """Process daily press releases and save output"""
+    s3 = None
+    if input_path.startswith('s3://') or output_path.startswith('s3://'):
+        s3 = boto3.client('s3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_REGION', 'ap-south-1'))
 
-    # Load input articles
     try:
+        # Load input
         if input_path.startswith('s3://'):
             bucket, key = input_path[5:].split('/', 1)
             obj = s3.get_object(Bucket=bucket, Key=key)
-            lines = obj['Body'].read().decode('utf-8').splitlines()
-            daily_articles = [json.loads(line) for line in lines]
+            daily_articles = [json.loads(line) for line in obj['Body'].read().decode('utf-8').splitlines()]
         else:
             with open(input_path, 'r', encoding='utf-8') as f:
                 daily_articles = [json.loads(line) for line in f]
-        if not daily_articles:
-            print("No articles found for today")
-            return
-    except Exception as e:
-        print(f"Error reading input: {e}")
-        return
 
-    # Call OpenRouter extractor
-    try:
+        if not daily_articles:
+            print("⚠️ No articles found for today")
+            return
+
+        # Process with AI
         result = extract_daily_locations_and_actions(daily_articles, api_key)
-        # Consolidate multiple blocks into one per location
         consolidated = consolidate_locations(result.get("locations", []))
 
         output = {
-            "processing_date": datetime.now().isoformat(),
+            "processing_date": datetime.utcnow().isoformat() + "Z",
             "articles_processed": len(daily_articles),
             "date": result.get("date", daily_articles[0].get("published_date", "")),
             "locations": consolidated,
             "source_articles": [
-                {"id": art.get("id", str(uuid.uuid4())), "title": art.get("title", ""), "url": art.get("url", "")}  
+                {"id": art.get("id", str(uuid.uuid4())), 
+                 "title": art.get("title", ""), 
+                 "url": art.get("url", "")}
                 for art in daily_articles
             ]
         }
 
+        # Save output
         out_json = json.dumps(output, indent=2, ensure_ascii=False)
         if output_path.startswith('s3://'):
             bucket, key = output_path[5:].split('/', 1)
@@ -161,15 +156,19 @@ def process_file(input_path, output_path, api_key):
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(out_json)
 
-        print(f"✅ Successfully processed and consolidated {len(consolidated)} locations from {len(daily_articles)} articles")
-    except Exception as e:
-        print(f"Processing failed: {e}")
+        print(f"✅ Processed {len(consolidated)} locations from {len(daily_articles)} articles")
 
+    except Exception as e:
+        print(f"❌ Processing failed: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process daily press releases with AI')
     parser.add_argument('--input', required=True, help='Input file path (local or s3://)')
     parser.add_argument('--output', required=True, help='Output file path (local or s3://)')
-    parser.add_argument('--api-key', required=True, help='OpenRouter API key')
+    parser.add_argument('--api-key', required=True, 
+                       default=os.getenv('OPENROUTER_API_KEY'),  # Fallback to env var
+                       help='OpenRouter API key (or set OPENROUTER_API_KEY env var)')
     args = parser.parse_args()
+    
     process_file(args.input, args.output, args.api_key)
