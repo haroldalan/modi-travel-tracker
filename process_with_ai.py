@@ -11,7 +11,7 @@ def extract_locations_and_actions(text: str, api_key: str) -> Dict:
     }
     
     payload = {
-        "model": "anthropic/claude-2",  # Or any OpenRouter-supported model
+        "model": "google/gemini-2.0-flash-001",  # Or any OpenRouter-supported model
         "messages": [{
             "role": "user",
             "content": f"""
