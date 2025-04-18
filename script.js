@@ -1,5 +1,6 @@
-// Sample data - replace with your actual dataset
-const travelData = [
+// Configuration
+const S3_BUCKET_URL = "https://processedmodiscraped.s3.amazonaws.com/latest.json";
+const FALLBACK_DATA = [
     {
         month: "January 2023",
         locations: [
@@ -24,81 +25,24 @@ const travelData = [
                     "Met with business leaders",
                     "Addressed public rally"
                 ]
-            },
-            {
-                lat: 13.0827,
-                lng: 80.2707,
-                name: "Chennai, India",
-                date: "Jan 10, 2023",
-                summary: [
-                    "Launched new healthcare initiative",
-                    "Attended cultural event",
-                    "Met with state government officials"
-                ]
             }
         ]
-    },
-    {
-        month: "February 2023",
-        locations: [
-            {
-                lat: 28.6139,
-                lng: 77.2090,
-                name: "New Delhi, India",
-                date: "Feb 2, 2023",
-                summary: [
-                    "Presented Union Budget",
-                    "Held bilateral meetings",
-                    "Addressed parliament"
-                ]
-            },
-            {
-                lat: 48.8566,
-                lng: 2.3522,
-                name: "Paris, France",
-                date: "Feb 8, 2023",
-                summary: [
-                    "Attended international summit",
-                    "Signed bilateral agreements",
-                    "Met with Indian diaspora"
-                ]
-            },
-            {
-                lat: 51.5074,
-                lng: -0.1278,
-                name: "London, UK",
-                date: "Feb 12, 2023",
-                summary: [
-                    "Met with UK Prime Minister",
-                    "Addressed business forum",
-                    "Visited cultural sites"
-                ]
-            },
-            {
-                lat: 28.6139,
-                lng: 77.2090,
-                name: "New Delhi, India",
-                date: "Feb 18, 2023",
-                summary: [
-                    "Chaired security meeting",
-                    "Launched digital initiative",
-                    "Met with state chief ministers"
-                ]
-            }
-        ]
-    },
-    // Add more months as needed
+    }
 ];
 
-// Initialize globe
+// DOM Elements
 const globeContainer = document.getElementById('globe-container');
 const tooltip = document.querySelector('.tooltip');
 const timeDisplay = document.getElementById('time-display');
 const prevMonthBtn = document.getElementById('prev-month');
 const nextMonthBtn = document.getElementById('next-month');
 
+// State
 let currentMonthIndex = 0;
+let travelData = [];
+let isLoading = true;
 
+// Initialize globe
 const globe = Globe()
     .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
@@ -109,23 +53,93 @@ const globe = Globe()
     .height(window.innerHeight)
     (globeContainer);
 
-// Handle window resize
-window.addEventListener('resize', () => {
-    globe.width(window.innerWidth).height(window.innerHeight);
-});
+// Add loading indicator
+const loader = document.createElement('div');
+loader.style.position = 'absolute';
+loader.style.top = '50%';
+loader.style.left = '50%';
+loader.style.transform = 'translate(-50%, -50%)';
+loader.style.color = 'white';
+loader.style.backgroundColor = 'rgba(0,0,0,0.7)';
+loader.style.padding = '20px';
+loader.style.borderRadius = '5px';
+loader.style.zIndex = '100';
+loader.textContent = 'Loading travel data...';
+document.body.appendChild(loader);
 
-// Function to update globe with current month's data
+// Main data loader
+async function loadTravelData() {
+    try {
+        const response = await fetch(`${S3_BUCKET_URL}?t=${Date.now()}`); // Cache busting
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const rawData = await response.json();
+        
+        // Group by month and transform to frontend format
+        const monthlyData = {};
+        rawData.locations.forEach(loc => {
+            const date = new Date(loc.date || rawData.date);
+            const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+            
+            if (!monthlyData[monthYear]) {
+                monthlyData[monthYear] = [];
+            }
+            
+            monthlyData[monthYear].push({
+                lat: loc.lat,
+                lng: loc.lng,
+                name: loc.name,
+                date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                summary: loc.actions.map(action => `• ${action}`)
+            });
+        });
+        
+        return Object.entries(monthlyData).map(([month, locations]) => ({
+            month,
+            locations
+        }));
+        
+    } catch (error) {
+        console.error("Using fallback data:", error);
+        return FALLBACK_DATA;
+    }
+}
+
+// Initialize with live data
+async function initialize() {
+    travelData = await loadTravelData();
+    isLoading = false;
+    loader.remove();
+    
+    if (travelData.length > 0) {
+        updateGlobe();
+        
+        // Auto-refresh every 5 minutes
+        setInterval(async () => {
+            const newData = await loadTravelData();
+            if (JSON.stringify(newData) !== JSON.stringify(travelData)) {
+                travelData = newData;
+                currentMonthIndex = Math.min(currentMonthIndex, travelData.length - 1);
+                updateGlobe();
+            }
+        }, 300000);
+    }
+}
+
+// Update globe with current month's data
 function updateGlobe() {
+    if (isLoading || travelData.length === 0) return;
+    
     const currentData = travelData[currentMonthIndex];
     timeDisplay.textContent = currentData.month;
     
-    // Disable/enable navigation buttons
+    // Update navigation buttons
     prevMonthBtn.disabled = currentMonthIndex === 0;
     nextMonthBtn.disabled = currentMonthIndex === travelData.length - 1;
     
-    // Extract locations and create arcs
-    const locations = currentData.locations;
+    // Create arcs between locations
     const arcs = [];
+    const locations = currentData.locations;
     
     for (let i = 0; i < locations.length - 1; i++) {
         arcs.push({
@@ -140,7 +154,7 @@ function updateGlobe() {
         });
     }
     
-    // Update globe with new data
+    // Update globe
     globe
         .pointsData(locations)
         .pointLat(d => d.lat)
@@ -164,18 +178,17 @@ function updateGlobe() {
         .arcStroke(0.5)
         .arcsTransitionDuration(1000);
     
-    // Auto-rotate to show all points
+    // Center view
     const allLats = locations.map(d => d.lat);
     const allLngs = locations.map(d => d.lng);
     const centerLat = (Math.min(...allLats) + Math.max(...allLats)) / 2;
     const centerLng = (Math.min(...allLngs) + Math.max(...allLngs)) / 2;
     
-    // Smooth transition to new view
-    // globe.controls().autoRotate = true;
     globe.controls().autoRotateSpeed = 0.5;
     globe.pointOfView({ lat: centerLat, lng: centerLng, altitude: 2 }, 1000);
 }
 
+// Event handlers (unchanged from your original)
 function handlePointHover(point) {
     if (point) {
         tooltip.style.display = 'block';
@@ -195,10 +208,8 @@ function handlePointHover(point) {
 }
 
 function handlePointClick(point) {
-    // Center on clicked point
     globe.pointOfView({ lat: point.lat, lng: point.lng, altitude: 1.5 }, 1000);
     
-    // Show detailed info panel
     const infoPanel = document.getElementById('info-panel');
     infoPanel.style.display = 'block';
     infoPanel.innerHTML = `
@@ -227,8 +238,10 @@ nextMonthBtn.addEventListener('click', () => {
     }
 });
 
-// Initialize
-updateGlobe();
+// Window resize handler
+window.addEventListener('resize', () => {
+    globe.width(window.innerWidth).height(window.innerHeight);
+});
 
 // Close info panel when clicking outside
 document.addEventListener('click', (e) => {
@@ -239,3 +252,6 @@ document.addEventListener('click', (e) => {
         infoPanel.style.display = 'none';
     }
 });
+
+// Start the application
+initialize();
