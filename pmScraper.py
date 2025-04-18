@@ -209,8 +209,9 @@ def main(argv: List[str] | None = None):
         global OUTPUT_PATH
         OUTPUT_PATH = args.output
 
-    run_date = datetime.fromisoformat(args.date).replace(tzinfo=timezone.utc)
-    logger.info("Running scraper for %s", run_date.date())
+    # Use the provided date directly (already in IST)
+    run_date = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    logger.info("Running scraper for %s (IST)", run_date.date())
     run_scraper(run_date)
 
 
