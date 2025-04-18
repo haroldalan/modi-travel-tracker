@@ -1,53 +1,53 @@
 import json
 import boto3
-import openai
-import argparse
-from typing import List, Dict
+import requests  # Changed from openai
 from datetime import datetime
 
 def extract_locations_and_actions(text: str, api_key: str) -> Dict:
-    """Use OpenRouter AI to extract structured data from press release"""
-    openai.api_key = api_key
-    openai.api_base = "https://openrouter.ai/api/v1"
+    """Use OpenRouter API instead of OpenAI"""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
     
-    prompt = f"""
-    Analyze this press release about PM Modi's activities and extract:
-    1. All locations mentioned (with coordinates if possible)
-    2. Key actions/activities in bullet points
-    
-    Return JSON format like:
-    {{
-        "locations": [
+    payload = {
+        "model": "anthropic/claude-2",  # Or any OpenRouter-supported model
+        "messages": [{
+            "role": "user",
+            "content": f"""
+            Analyze this press release and extract:
+            1. Locations (with coordinates if possible)
+            2. Key actions in bullet points.
+            
+            Return JSON format like:
             {{
-                "name": "City, Country",
-                "lat": float,
-                "lng": float,
-                "date": "YYYY-MM-DD",
-                "actions": [
-                    "Action 1",
-                    "Action 2"
-                ]
+                "locations": [{{
+                    "name": "City, Country",
+                    "lat": float,
+                    "lng": float,
+                    "date": "YYYY-MM-DD",
+                    "actions": ["Action 1", "Action 2"]
+                }}]
             }}
-        ]
-    }}
+            
+            Press release:
+            {text}
+            """
+        }]
+    }
     
-    Press release:
-    {text}
-    """
-    
-    response = openai.ChatCompletion.create(
-        model="anthropic/claude-2",  # or any preferred model
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
+    response = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json=payload
     )
     
     try:
-        return json.loads(response.choices[0].message.content)
-    except json.JSONDecodeError:
-        print("Failed to parse AI response")
+        return response.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"OpenRouter error: {e}")
         return {"locations": []}
 
-def process_file(input_path: str, output_path: str, api_key: str):
     """Process all press releases in input file"""
     s3 = boto3.client('s3')
     
