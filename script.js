@@ -1,5 +1,6 @@
 // Configuration
-const S3_BUCKET_URL = "https://processedmodiscraped.s3.amazonaws.com/latest.json";
+const S3_BUCKET_URL = "https://processedmodiscraped.s3.ap-south-1.amazonaws.com/latest.json";
+const CACHE_BUSTER = `?t=${Date.now()}`;
 const FALLBACK_DATA = [
     {
         month: "January 2023",
@@ -69,40 +70,46 @@ document.body.appendChild(loader);
 
 // Main data loader
 async function loadTravelData() {
-    try {
-        const response = await fetch(`${S3_BUCKET_URL}?t=${Date.now()}`); // Cache busting
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const rawData = await response.json();
-        
-        // Group by month and transform to frontend format
-        const monthlyData = {};
-        rawData.locations.forEach(loc => {
-            const date = new Date(loc.date || rawData.date);
-            const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
-            
-            if (!monthlyData[monthYear]) {
-                monthlyData[monthYear] = [];
-            }
-            
-            monthlyData[monthYear].push({
-                lat: loc.lat,
-                lng: loc.lng,
-                name: loc.name,
-                date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                summary: loc.actions.map(action => `• ${action}`)
-            });
-        });
-        
-        return Object.entries(monthlyData).map(([month, locations]) => ({
-            month,
-            locations
-        }));
-        
-    } catch (error) {
-        console.error("Using fallback data:", error);
-        return FALLBACK_DATA;
+  try {
+    console.log("Fetching data from:", S3_BUCKET_URL + CACHE_BUSTER);
+    const response = await fetch(S3_BUCKET_URL + CACHE_BUSTER);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
+    
+    const rawData = await response.json();
+    console.log("Received data:", rawData); // Debug log
+    
+    // Transform data
+    const monthlyData = {};
+    
+    rawData.locations.forEach(loc => {
+      const date = new Date(loc.date || rawData.date);
+      const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      
+      if (!monthlyData[monthYear]) {
+        monthlyData[monthYear] = [];
+      }
+      
+      monthlyData[monthYear].push({
+        lat: loc.lat,
+        lng: loc.lng,
+        name: loc.name,
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        summary: loc.actions?.map(action => `• ${action}`) || []
+      });
+    });
+    
+    return Object.entries(monthlyData).map(([month, locations]) => ({
+      month,
+      locations
+    }));
+    
+  } catch (error) {
+    console.error("Data loading failed:", error);
+    return FALLBACK_DATA;
+  }
 }
 
 // Initialize with live data
