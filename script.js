@@ -49,11 +49,10 @@ const CONFIG = {
     // Configure controls
     const controls = globe.controls();
     controls.enableZoom = true;
-    controls.zoomSpeed = 4.0; // Increased from 10 (higher values make it faster)
-    //controls.enableDamping = true; // Adds smooth deceleration
-    //controls.dampingFactor = 0.05; // Adjust damping effect
-    controls.minDistance = 1;  // Minimum zoom distance
-    controls.maxDistance = 10;   // Maximum zoom distance
+    controls.zoomSpeed = 30; 
+    controls.minDistance = 80;      // ↓ smaller number = closer in
+    controls.maxDistance = 8000;    // ↑ larger number = farther out
+    controls.enablePan = false;
   
     // Default POV: India
     globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
