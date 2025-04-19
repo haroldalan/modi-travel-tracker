@@ -59,14 +59,30 @@ async function fetchDay(year, month, day) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('Not found');
     const obj = await res.json();
-    return (obj.locations || []).map(loc => ({
-      lat: loc.lat,
-      lng: loc.lng,
-      name: loc.name,
-      date: new Date(obj.date)
-              .toLocaleDateString('en-US', LABEL_OPTIONS),
-      summary: loc.actions || []
-    }));
+    const displayDate = new Date(obj.date)
+      .toLocaleDateString('en-US', LABEL_OPTIONS);
+
+    // NEW format: single location + actions
+    if (obj.location) {
+      return [{
+        lat:   obj.location.lat,
+        lng:   obj.location.lng,
+        name:  obj.location.name,
+        date:  displayDate,
+        summary: obj.actions || []
+      }];
+    }
+    // FALLBACK to old format: array of locations
+    if (Array.isArray(obj.locations)) {
+      return obj.locations.map(loc => ({
+        lat:     loc.lat,
+        lng:     loc.lng,
+        name:    loc.name,
+        date:    displayDate,
+        summary: loc.actions || []
+      }));
+    }
+    return [];
   } catch (e) {
     return [];
   }
