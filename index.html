@@ -5,31 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PM Modi's Travels</title>
   <style>
-    /* Full-screen starry background on body */
+    /* Starry background on body */
     body {
       margin: 0;
       padding: 0;
       font-family: Arial, sans-serif;
       background: url('https://unpkg.com/three-globe/example/img/night-sky.png') no-repeat center center fixed;
       background-size: cover;
-      color: white;
       overflow: hidden;
+      color: white;
     }
 
-    /* Globe container above header */
+    /* Globe canvas wrapper above header */
     #globe-container {
       position: absolute;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      z-index: 2; /* above title, below controls */
+      z-index: 2;
     }
-
-    /* Ensure the canvas is transparent */
+    /* Ensure canvas inside is transparent */
     #globe-container canvas {
       background: transparent !important;
     }
 
-    /* Header under globe, above stars */
+    /* Header sits between stars and globe */
     .title {
       position: absolute;
       top: 20px; left: 0; right: 0;
@@ -40,12 +39,37 @@
       pointer-events: none;
     }
 
-    /* Controls, tooltip, and info-panel above everything */
+    /* UI elements on top */
+    #controls,
     #info-panel,
-    .tooltip,
-    #controls {
+    .tooltip {
       position: absolute;
       z-index: 3;
+    }
+
+    #controls {
+      bottom: 20px; left: 0; right: 0;
+      display: flex; justify-content: center; gap: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      background: #ff6600;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    button:hover { background: #ff8533; }
+    button:disabled { background: #666; cursor: not-allowed; }
+
+    #time-display {
+      padding: 10px 20px;
+      background: rgba(0,0,0,0.7);
+      border-radius: 5px;
+      font-size: 18px;
     }
 
     #info-panel {
@@ -65,55 +89,19 @@
       max-width: 300px;
       display: none;
     }
-
-    #controls {
-      bottom: 20px; left: 0; right: 0;
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-    }
-
-    button {
-      padding: 10px 20px;
-      background: #ff6600;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 16px;
-      transition: background 0.3s;
-    }
-    button:hover { background: #ff8533; }
-    button:disabled {
-      background: #666;
-      cursor: not-allowed;
-    }
-
-    #time-display {
-      padding: 10px 20px;
-      background: rgba(0,0,0,0.7);
-      border-radius: 5px;
-      color: white;
-      font-size: 18px;
-    }
   </style>
 </head>
 <body>
-  <!-- 1) Starry background behind all -->
-  <!-- 2) Globe canvas sits above the header -->
+  <!-- Stars on body -->
   <div id="globe-container"></div>
-
-  <!-- 3) Header over stars but under globe -->
   <div class="title">PM Narendra Modi's Travels</div>
-
-  <!-- 4) Tooltip, info-panel, and controls on top -->
-  <div id="info-panel"></div>
-  <div class="tooltip"></div>
   <div id="controls">
     <button id="prev-month">Previous Month</button>
     <div id="time-display">Month, Year</div>
     <button id="next-month">Next Month</button>
   </div>
+  <div id="info-panel"></div>
+  <div class="tooltip"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.0.0/d3.min.js"></script>
