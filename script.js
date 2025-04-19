@@ -66,16 +66,35 @@ const CONFIG = {
   const globe = initGlobe();
 
 // super‑boost wheel zoom by directly altering camera altitude
-DOM.globeContainer.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  const dir = e.deltaY > 0 ? 1 : -1;            // wheel down → zoom in
-  const cam = globe.camera();                   // three.js camera
+// tweak these two numbers to taste
+const MIN_DIST = 150;   // closest you can get (≈ radius‑hugging)
+const MAX_DIST = 8000;  // farthest you can pull back
+// ------------------------------------------------------------------
 
-  // Adjust distance linearly – 0.3 gives a snappy feel
-  const factor = 1 + dir * 0.05;                 // tweak 0.3 ↔ 0.05 to taste
-  cam.position.multiplyScalar(factor);
-  cam.updateProjectionMatrix();
-});
+DOM.globeContainer.addEventListener(
+  'wheel',
+  (e) => {
+    e.preventDefault();
+
+    const dir     = e.deltaY > 0 ? 1 : -1;    // wheel down → zoom in
+    const cam     = globe.camera();          // three‑js PerspectiveCamera
+    const factor  = 1 + dir * 0.05;           // 0.3 ⇒ snappy; lower for finer
+
+    /* 1️⃣  compute the tentative new distance */
+    let newDist = cam.position.length() * factor;
+
+    /* 2️⃣  clamp between your chosen limits */
+    newDist = Math.max(MIN_DIST, Math.min(MAX_DIST, newDist));
+
+    /* 3️⃣  set the camera to that distance while keeping direction */
+    cam.position.setLength(newDist);
+    cam.updateProjectionMatrix();            // refresh internals
+
+    /* 4️⃣  tell OrbitControls to re‑sync its internal state */
+    globe.controls().update();
+  },
+  { passive: false }                         // so preventDefault() works
+);
   
   // Date helpers
   function isBefore(a, b) {
