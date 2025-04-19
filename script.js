@@ -1,3 +1,5 @@
+// script.js
+
 // Configuration
 const S3_BASE_URL   = "https://processedmodiscraped.s3.ap-south-1.amazonaws.com";
 const DATE_FORMAT   = { year: 'numeric', month: 'long' };
@@ -12,13 +14,13 @@ const prevMonthBtn   = document.getElementById('prev-month');
 const nextMonthBtn   = document.getElementById('next-month');
 
 // Date bounds
-const initialDate  = new Date();                   // “Today”
+const initialDate  = new Date();                   
 const earliestDate = new Date(initialDate);
-earliestDate.setFullYear(earliestDate.getFullYear() - 2);  // 2 yrs back
+earliestDate.setFullYear(earliestDate.getFullYear() - 2);
 
 // State
 let currentDate = new Date(initialDate);
-let travelData  = {};  // cache monthKey → [locations]
+let travelData  = {};
 
 // Helpers
 function isBefore(a, b) {
@@ -28,6 +30,25 @@ function isBefore(a, b) {
 function isAfter(a, b) {
   return a.getFullYear() > b.getFullYear()
       || (a.getFullYear() === b.getFullYear() && a.getMonth() > b.getMonth());
+}
+
+/**
+ * Convert lat/lng to 3D Cartesian coordinates on the globe
+ * @param {number} lat 
+ * @param {number} lng 
+ * @param {number} alt altitude factor (relative to globe radius)
+ * @returns {THREE.Vector3}
+ */
+function latLngToXYZ(lat, lng, alt = 0) {
+  const R = globe.globeRadius();                
+  const phi   = (90 - lat) * (Math.PI / 180);
+  const theta = (lng + 180) * (Math.PI / 180);
+  const r     = R * (1 + alt);
+  return new THREE.Vector3(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
+  );
 }
 
 // 🌐 Initialize Globe
@@ -62,17 +83,16 @@ async function fetchDay(year, month, day) {
     const displayDate = new Date(obj.date)
       .toLocaleDateString('en-US', LABEL_OPTIONS);
 
-    // NEW format: single location + actions
     if (obj.location) {
       return [{
-        lat:   obj.location.lat,
-        lng:   obj.location.lng,
-        name:  obj.location.name,
-        date:  displayDate,
+        lat:     obj.location.lat,
+        lng:     obj.location.lng,
+        name:    obj.location.name,
+        date:    displayDate,
         summary: obj.actions || []
       }];
     }
-    // FALLBACK to old format: array of locations
+
     if (Array.isArray(obj.locations)) {
       return obj.locations.map(loc => ({
         lat:     loc.lat,
@@ -109,7 +129,7 @@ async function loadMonthData(date) {
   return locations;
 }
 
-// ——— Drawing the globe ———
+// ——— Drawing the globe with static arrows ———
 
 async function updateGlobe() {
   const monthYear = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
@@ -120,20 +140,7 @@ async function updateGlobe() {
   prevMonthBtn.disabled = !isAfter(currentDate, earliestDate);
   nextMonthBtn.disabled = !isBefore(currentDate, initialDate);
 
-  // build arcs between sequential points
-  const arcs = [];
-  for (let i = 0; i < locations.length - 1; i++) {
-    const a = locations[i], b = locations[i + 1];
-    arcs.push({
-      startLat: a.lat, startLng: a.lng,
-      endLat:   b.lat, endLng:   b.lng,
-      color: [
-        ['rgba(255,102,0,0.6)','rgba(255,102,0,0.3)'],
-        ['rgba(255,102,0,0.6)','rgba(255,102,0,0.3)']
-      ]
-    });
-  }
-
+  // plot points
   globe
     .pointsData(locations)
     .pointLat(d => d.lat)
@@ -148,14 +155,32 @@ async function updateGlobe() {
       </div>
     `)
     .onPointHover(handlePointHover)
-    .onPointClick(handlePointClick)
-    .arcsData(arcs)
-    .arcColor('color')
-    .arcDashLength(0.5)
-    .arcDashGap(1)
-    .arcDashAnimateTime(2000)
-    .arcStroke(0.5)
-    .arcsTransitionDuration(1000);
+    .onPointClick(handlePointClick);
+
+  // remove old arrows
+  globe.scene().children
+    .filter(obj => obj.userData && obj.userData.isArrowHelper)
+    .forEach(obj => globe.scene().remove(obj));
+
+  // draw thin arrows
+  locations.slice(0, -1).forEach((start, i) => {
+    const end = locations[i + 1];
+    const from = latLngToXYZ(start.lat, start.lng, 0.01);
+    const to   = latLngToXYZ(end.lat, end.lng,     0.01);
+    const dir  = new THREE.Vector3().subVectors(to, from).normalize();
+    const len  = from.distanceTo(to);
+
+    const arrow = new THREE.ArrowHelper(
+      dir,         // direction
+      from,        // origin
+      len,         // length
+      0xff6600,    // color (orange)
+      0.05,        // headLength
+      0.02         // headWidth
+    );
+    arrow.userData.isArrowHelper = true;
+    globe.scene().add(arrow);
+  });
 
   // auto‑center if there are points
   if (locations.length) {
@@ -176,7 +201,6 @@ function handlePointHover(pt) {
   tooltip.style.left  = `${rect.left + 10}px`;
   tooltip.style.top   = `${rect.top  + 10}px`;
 
-  // NO nested backticks here — use single‑quoted strings:
   tooltip.innerHTML = `
     <h3>${pt.name}</h3>
     <p><em>${pt.date}</em></p>
@@ -200,7 +224,7 @@ function handlePointClick(pt) {
   `;
 }
 
-// Prev/Next month handlers — fetch each month on demand
+// Prev/Next month handlers
 prevMonthBtn.addEventListener('click', () => {
   currentDate.setMonth(currentDate.getMonth() - 1);
   updateGlobe();
@@ -215,5 +239,5 @@ window.addEventListener('resize', () => {
   globe.width(window.innerWidth).height(window.innerHeight);
 });
 
-// initial draw (only current month is fetched)
+// initial draw
 updateGlobe();
