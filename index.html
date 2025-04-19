@@ -1,32 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PM Modi's Travels</title>
   <style>
-    /* 1) Starfield as page background */
     body {
       margin: 0;
       padding: 0;
-      overflow: hidden;
-      background: url('https://unpkg.com/three-globe/example/img/night-sky.png') no-repeat center center fixed;
-      background-size: cover;
       font-family: Arial, sans-serif;
+      background: #000;
+      overflow: hidden;
       color: white;
     }
 
-    /* 2) Globe canvas above the starfield and the title */
+    /* Globe canvas at base layer */
     #globe-container {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      z-index: 2;
+      z-index: 1;
     }
 
-    /* 3) Title sits below the globe but above the stars */
+    /* Title on top of globe */
     .title {
       position: absolute;
       top: 20px;
@@ -35,16 +33,16 @@
       text-align: center;
       font-size: 24px;
       text-shadow: 0 0 5px black;
-      z-index: 1;
+      z-index: 2;
       pointer-events: none;
     }
 
-    /* 4) Controls, tooltip, and info-panel on top of everything */
+    /* Controls, tooltips, and info-panel above all */
     #controls,
     .tooltip,
     #info-panel {
       position: absolute;
-      z-index: 3;
+      z-index: 2;
     }
 
     #controls {
@@ -65,21 +63,23 @@
       cursor: pointer;
       font-size: 16px;
       transition: background 0.3s;
+      z-index: 2;
     }
     button:hover { background: #ff8533; }
     button:disabled { background: #666; cursor: not-allowed; }
 
     #time-display {
       padding: 10px 20px;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0, 0, 0, 0.7);
       border-radius: 5px;
       font-size: 18px;
+      z-index: 2;
     }
 
     #info-panel {
       top: 20px;
       left: 20px;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0, 0, 0, 0.7);
       padding: 15px;
       border-radius: 5px;
       max-width: 300px;
@@ -88,7 +88,8 @@
 
     .tooltip {
       padding: 10px;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
       border-radius: 5px;
       pointer-events: none;
       max-width: 300px;
@@ -99,7 +100,7 @@
 <body>
   <div id="globe-container"></div>
   <div class="title">PM Narendra Modi's Travels</div>
-
+  
   <div id="controls">
     <button id="prev-month">Previous Month</button>
     <div id="time-display">Month, Year</div>
