@@ -49,10 +49,13 @@ const CONFIG = {
     // Configure controls
     const controls = globe.controls();
     controls.enableZoom = true;
-    controls.zoomSpeed = 30; 
-    controls.minDistance = 80;      // ↓ smaller number = closer in
-    controls.maxDistance = 8000;    // ↑ larger number = farther out
+    controls.zoomSpeed = 120; 
+    controls.minDistance = 15;      // ↓ smaller number = closer in
+    controls.maxDistance = 9000;    // ↑ larger number = farther out
+    controls.zoomToCursor = true; // wheel zoom centres on the mouse pointer
+    controls.dampingFactor = 0.07; // smooth movement
     controls.enablePan = false;
+
   
     // Default POV: India
     globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
