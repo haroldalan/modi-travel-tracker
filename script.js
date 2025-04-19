@@ -72,7 +72,7 @@ DOM.globeContainer.addEventListener('wheel', (e) => {
   const cam = globe.camera();                   // three.js camera
 
   // Adjust distance linearly – 0.3 gives a snappy feel
-  const factor = 1 + dir * 0.3;                 // tweak 0.3 ↔ 0.05 to taste
+  const factor = 1 + dir * 0.05;                 // tweak 0.3 ↔ 0.05 to taste
   cam.position.multiplyScalar(factor);
   cam.updateProjectionMatrix();
 });
