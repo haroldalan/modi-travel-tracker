@@ -1,5 +1,3 @@
-// script.js
-
 // Configuration
 const S3_BASE_URL   = "https://processedmodiscraped.s3.ap-south-1.amazonaws.com";
 const DATE_FORMAT   = { year: 'numeric', month: 'long' };
@@ -16,7 +14,7 @@ const nextMonthBtn   = document.getElementById('next-month');
 // Date bounds
 const initialDate  = new Date();                   // “Today”
 const earliestDate = new Date(initialDate);
-earliestDate.setFullYear(earliestDate.getFullYear() - 2);  // 2 yrs back
+earliestDate.setFullYear(earliestDate.getFullYear() - 2);  // 2 yrs back
 
 // State
 let currentDate = new Date(initialDate);
@@ -51,10 +49,6 @@ controls.zoomSpeed  = 10;
 // Default POV: India
 globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
 
-// ——— Arrows container ———
-const arrowsGroup = new THREE.Group();
-globe.scene().add(arrowsGroup);
-
 // ——— Data fetching ———
 
 // Fetch one day’s JSON (or [] if missing)
@@ -71,10 +65,10 @@ async function fetchDay(year, month, day) {
     // NEW format: single location + actions
     if (obj.location) {
       return [{
-        lat:     obj.location.lat,
-        lng:     obj.location.lng,
-        name:    obj.location.name,
-        date:    displayDate,
+        lat:   obj.location.lat,
+        lng:   obj.location.lng,
+        name:  obj.location.name,
+        date:  displayDate,
         summary: obj.actions || []
       }];
     }
@@ -126,57 +120,26 @@ async function updateGlobe() {
   prevMonthBtn.disabled = !isAfter(currentDate, earliestDate);
   nextMonthBtn.disabled = !isBefore(currentDate, initialDate);
 
-  // ——— clear old arrows ———
-  while (arrowsGroup.children.length) {
-    arrowsGroup.remove(arrowsGroup.children[0]);
-  }
-
-  // ——— draw subtle pulsing arrows ———
+  // build arcs between sequential points
+  const arcs = [];
   for (let i = 0; i < locations.length - 1; i++) {
     const a = locations[i], b = locations[i + 1];
-
-    // convert lat/lng to 3D vectors
-    const phi1 = (90 - a.lat) * Math.PI / 180;
-    const theta1 = (a.lng + 180) * Math.PI / 180;
-    const phi2 = (90 - b.lat) * Math.PI / 180;
-    const theta2 = (b.lng + 180) * Math.PI / 180;
-    const r = globe.getGlobeRadius();
-
-    const start = new THREE.Vector3(
-      r * Math.sin(phi1) * Math.cos(theta1),
-      r * Math.cos(phi1),
-      r * Math.sin(phi1) * Math.sin(theta1)
-    );
-    const end = new THREE.Vector3(
-      r * Math.sin(phi2) * Math.cos(theta2),
-      r * Math.cos(phi2),
-      r * Math.sin(phi2) * Math.sin(theta2)
-    );
-
-    const dir = end.clone().sub(start).normalize();
-    const len = start.distanceTo(end);
-
-    const arrow = new THREE.ArrowHelper(dir, start, len, 0xff6600, 0.3, 0.1);
-    arrow.line.material.opacity     = 0.3;
-    arrow.line.material.transparent = true;
-    arrowsGroup.add(arrow);
-
-    // subtle pulsing
-    let grow = true;
-    setInterval(() => {
-      const s = arrow.cone.scale.x + (grow ? 0.005 : -0.005);
-      arrow.setLength(len, s, s);
-      grow = s < 0.5;
-    }, 100);
+    arcs.push({
+      startLat: a.lat, startLng: a.lng,
+      endLat:   b.lat, endLng:   b.lng,
+      color: [
+        ['rgba(255,102,0,0.6)','rgba(255,102,0,0.3)'],
+        ['rgba(255,102,0,0.6)','rgba(255,102,0,0.3)']
+      ]
+    });
   }
 
-  // ——— plot points with reduced size ———
   globe
     .pointsData(locations)
     .pointLat(d => d.lat)
     .pointLng(d => d.lng)
     .pointAltitude(0.01)
-    .pointRadius(0.4)   // reduced from 0.7
+    .pointRadius(0.7)
     .pointColor(() => 'rgba(255,102,0,0.8)')
     .pointLabel(d => `
       <div style="text-align:center">
@@ -185,7 +148,14 @@ async function updateGlobe() {
       </div>
     `)
     .onPointHover(handlePointHover)
-    .onPointClick(handlePointClick);
+    .onPointClick(handlePointClick)
+    .arcsData(arcs)
+    .arcColor('color')
+    .arcDashLength(0.5)
+    .arcDashGap(1)
+    .arcDashAnimateTime(2000)
+    .arcStroke(0.5)
+    .arcsTransitionDuration(1000);
 
   // auto‑center if there are points
   if (locations.length) {
@@ -206,6 +176,7 @@ function handlePointHover(pt) {
   tooltip.style.left  = `${rect.left + 10}px`;
   tooltip.style.top   = `${rect.top  + 10}px`;
 
+  // NO nested backticks here — use single‑quoted strings:
   tooltip.innerHTML = `
     <h3>${pt.name}</h3>
     <p><em>${pt.date}</em></p>
