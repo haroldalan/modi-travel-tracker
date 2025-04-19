@@ -26,13 +26,15 @@ const globe = Globe()
   .height(window.innerHeight)
   (globeContainer);
 
-// Transparent canvas to reveal the body background
+// Make canvas transparent to show body background
 globe.renderer().setClearAlpha(0);
+// Also clear scene background if set
+globe.scene().background = null;
 
 // Zoom sensitivity & controls
 const controls = globe.controls();
 controls.enableZoom = true;
-controls.zoomSpeed  = 10; // further increased
+controls.zoomSpeed  = 20; // increased sensitivity
 
 // Default view: India
 globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
@@ -57,21 +59,20 @@ async function fetchDay(year, month, day) {
   }
 }
 
-// Load month data by fetching days in parallel
+// Load month's data
 async function loadMonthData(date) {
   const monthYear = date.toLocaleDateString('en-US', DATE_FORMAT);
   if (travelData[monthYear]) return travelData[monthYear];
 
   const year  = date.getFullYear();
   const month = String(date.getMonth()+1).padStart(2, '0');
-  const days = new Date(year, date.getMonth()+1, 0).getDate();
+  const days  = new Date(year, date.getMonth()+1, 0).getDate();
 
   const perDay = await Promise.all(
     Array.from({ length: days }, (_, i) => fetchDay(year, month, i+1))
   );
 
-  const locations = perDay
-    .flat()
+  const locations = perDay.flat()
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   travelData[monthYear] = locations;
@@ -84,18 +85,16 @@ async function loadMonthData(date) {
   return locations;
 }
 
-// Update globe with current month
+// Update globe
 async function updateGlobe() {
   const monthYear = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
   const locations = await loadMonthData(currentDate);
 
-  // UI updates
   timeDisplay.textContent = monthYear;
   const idx = availableMonths.indexOf(monthYear);
   prevMonthBtn.disabled = idx <= 0;
   nextMonthBtn.disabled = idx < 0 || idx === availableMonths.length - 1;
 
-  // Build arcs
   const arcs = [];
   for (let i = 0; i < locations.length - 1; i++) {
     const a = locations[i], b = locations[i+1];
@@ -114,7 +113,7 @@ async function updateGlobe() {
     .pointLat(d => d.lat)
     .pointLng(d => d.lng)
     .pointAltitude(0.01)
-    .pointRadius(0.7)           // increased marker size
+    .pointRadius(0.7)
     .pointColor(() => 'rgba(255,102,0,0.8)')
     .pointLabel(d => `
       <div style="text-align:center">
@@ -132,7 +131,6 @@ async function updateGlobe() {
     .arcStroke(0.5)
     .arcsTransitionDuration(1000);
 
-  // Auto-center
   if (locations.length) {
     const lats = locations.map(d => d.lat);
     const lngs = locations.map(d => d.lng);
@@ -171,13 +169,13 @@ function handlePointClick(pt) {
 }
 
 // Month nav
-document.getElementById('prev-month').addEventListener('click', () => {
+prevMonthBtn.addEventListener('click', () => {
   const idx = availableMonths.indexOf(currentDate.toLocaleDateString('en-US', DATE_FORMAT));
   if (idx > 0) currentDate = new Date(availableMonths[idx-1]), updateGlobe();
 });
-document.getElementById('next-month').addEventListener('click', () => {
+nextMonthBtn.addEventListener('click', () => {
   const idx = availableMonths.indexOf(currentDate.toLocaleDateString('en-US', DATE_FORMAT));
-  if (idx >= 0 && idx < availableMonths.length-1) currentDate = new Date(availableMonths[idx+1]), updateGlobe();
+  if (idx >=0 && idx < availableMonths.length-1) currentDate = new Date(availableMonths[idx+1]), updateGlobe();
 });
 
 // Resize
