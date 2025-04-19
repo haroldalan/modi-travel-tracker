@@ -49,7 +49,7 @@ const CONFIG = {
     // Configure controls
     const controls = globe.controls();
     controls.enableZoom = true;
-    controls.zoomSpeed = 10;
+    controls.zoomSpeed = 20;
     controls.enablePan = false;
   
     // Default POV: India
