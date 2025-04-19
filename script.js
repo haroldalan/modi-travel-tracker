@@ -64,12 +64,18 @@ function clearArrows() {
 
 // Fetch one day’s JSON (or [] if missing)
 async function fetchDay(year, month, day) {
-  const dd = String(day).padStart(2, '0');
+  const dd  = String(day).padStart(2, '0');
   const url = `${S3_BASE_URL}/${year}/${month}/${dd}/processed.json?t=${Date.now()}`;
+  console.log('Fetching data from URL:', url);
   try {
     const res = await fetch(url);
-    if (!res.ok) throw new Error('Not found');
+    console.log(`Response for ${url}:`, res.status, res.statusText);
+    if (!res.ok) {
+      console.warn(`No data for ${year}-${month}-${dd}`);
+      return [];
+    }
     const obj = await res.json();
+    console.log('Fetched object:', obj);
     const displayDate = new Date(obj.date).toLocaleDateString('en-US', LABEL_OPTIONS);
 
     // New format: single location + actions
@@ -94,6 +100,7 @@ async function fetchDay(year, month, day) {
     }
     return [];
   } catch (e) {
+    console.error('Error fetching day:', e);
     return [];
   }
 }
@@ -101,17 +108,22 @@ async function fetchDay(year, month, day) {
 // Load a month’s data
 async function loadMonthData(date) {
   const key = date.toLocaleDateString('en-US', DATE_FORMAT);
-  if (travelData[key]) return travelData[key];
+  if (travelData[key]) {
+    console.log(`Using cache for ${key}`);
+    return travelData[key];
+  }
 
   const year  = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const days  = new Date(year, date.getMonth() + 1, 0).getDate();
 
+  console.log(`Loading data for ${key} (${year}-${month}) with ${days} days`);
   const entries = await Promise.all(
     Array.from({ length: days }, (_, i) => fetchDay(year, month, i + 1))
   );
 
   const locations = entries.flat().sort((a, b) => new Date(a.date) - new Date(b.date));
+  console.log(`Loaded ${locations.length} locations for ${key}`);
   travelData[key] = locations;
   return locations;
 }
@@ -161,19 +173,22 @@ function handlePointClick(point) {
 
 // Update the globe and arrows
 async function updateGlobe() {
+  console.log('Updating globe for', currentDate.toDateString());
   // Update header & buttons
   timeDisplay.textContent = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
   prevMonthBtn.disabled = !isAfter(currentDate, earliestDate);
   nextMonthBtn.disabled = !isBefore(currentDate, initialDate);
 
   const locations = await loadMonthData(currentDate);
+  console.log('Locations array:', locations);
 
   // Clear old arrows
   clearArrows();
 
   // Draw arrows
-  for (let i = 0; i < locations.length - 1; i++) {
-    const from = locations[i], to = locations[i + 1];
+  locations.forEach((from, i) => {
+    if (i === locations.length - 1) return;
+    const to = locations[i + 1];
     const start = latLngToVector(from.lat, from.lng);
     const end   = latLngToVector(to.lat, to.lng);
     const dir   = new THREE.Vector3().subVectors(end, start).normalize();
@@ -189,10 +204,9 @@ async function updateGlobe() {
     setInterval(() => {
       const scale = arrow.cone.scale.x + (growing ? 0.005 : -0.005);
       arrow.setLength(len, scale, scale);
-      if (scale > 0.5) growing = false;
-      if (scale < 0.2) growing = true;
+      growing = scale < 0.5;
     }, 100);
-  }
+  });
 
   // Plot points
   globe
