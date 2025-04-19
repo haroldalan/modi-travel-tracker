@@ -14,7 +14,6 @@
       color: white;
     }
 
-    /* Globe canvas at base layer */
     #globe-container {
       position: absolute;
       top: 0;
@@ -24,7 +23,6 @@
       z-index: 1;
     }
 
-    /* Title on top of globe */
     .title {
       position: absolute;
       top: 20px;
@@ -37,10 +35,10 @@
       pointer-events: none;
     }
 
-    /* Controls, tooltips, and info-panel above all */
     #controls,
     .tooltip,
-    #info-panel {
+    #info-panel,
+    #loading-indicator {
       position: absolute;
       z-index: 2;
     }
@@ -95,6 +93,28 @@
       max-width: 300px;
       display: none;
     }
+
+    #loading-indicator {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.7);
+      padding: 20px;
+      border-radius: 5px;
+      display: none;
+    }
+
+    .no-data-message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.7);
+      padding: 20px;
+      border-radius: 5px;
+      z-index: 2;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -102,13 +122,15 @@
   <div class="title">PM Narendra Modi's Travels</div>
   
   <div id="controls">
-    <button id="prev-month">Previous Month</button>
-    <div id="time-display">Month, Year</div>
-    <button id="next-month">Next Month</button>
+    <button id="prev-month" aria-label="Previous month">Previous Month</button>
+    <div id="time-display" aria-live="polite">Month, Year</div>
+    <button id="next-month" aria-label="Next month">Next Month</button>
   </div>
 
-  <div id="info-panel"></div>
-  <div class="tooltip"></div>
+  <div id="info-panel" role="dialog" aria-modal="true"></div>
+  <div class="tooltip" role="tooltip"></div>
+  <div id="loading-indicator">Loading data...</div>
+  <div class="no-data-message">No travel data available for this month</div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.0.0/d3.min.js"></script>
