@@ -3,7 +3,7 @@ const S3_BASE_URL   = "https://processedmodiscraped.s3.ap-south-1.amazonaws.com"
 const DATE_FORMAT   = { year: 'numeric', month: 'long' };
 const LABEL_OPTIONS = { month: 'short', day: 'numeric', year: 'numeric' };
 
-// DOM references
+// DOM refs
 const globeContainer = document.getElementById('globe-container');
 const tooltip        = document.querySelector('.tooltip');
 const infoPanel      = document.getElementById('info-panel');
@@ -12,15 +12,15 @@ const prevMonthBtn   = document.getElementById('prev-month');
 const nextMonthBtn   = document.getElementById('next-month');
 
 // Date bounds
-const initialDate   = new Date();                   // “Today” at load
-const earliestDate  = new Date(initialDate);
-earliestDate.setFullYear(earliestDate.getFullYear() - 2);  // 2 years back
+const initialDate  = new Date();                   // “Today”
+const earliestDate = new Date(initialDate);
+earliestDate.setFullYear(earliestDate.getFullYear() - 2);  // 2 yrs back
 
 // State
-let currentDate = new Date(initialDate);  // starts on the current month
-let travelData  = {};                     // cache: monthKey → locations[]
+let currentDate = new Date(initialDate);
+let travelData  = {};  // cache monthKey → [locations]
 
-// Helpers for month‐only comparisons
+// Helpers
 function isBefore(a, b) {
   return a.getFullYear() < b.getFullYear()
       || (a.getFullYear() === b.getFullYear() && a.getMonth() < b.getMonth());
@@ -30,7 +30,7 @@ function isAfter(a, b) {
       || (a.getFullYear() === b.getFullYear() && a.getMonth() > b.getMonth());
 }
 
-// Initialize globe
+// 🌐 Initialize Globe
 const globe = Globe()
   .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
   .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
@@ -41,7 +41,7 @@ const globe = Globe()
   .height(window.innerHeight)
   (globeContainer);
 
-// Zoom
+// Zoom tweaks
 const controls = globe.controls();
 controls.enableZoom = true;
 controls.zoomSpeed  = 10;
@@ -49,7 +49,9 @@ controls.zoomSpeed  = 10;
 // Default POV: India
 globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
 
-// Fetch a single day’s JSON (or return [] if missing)
+// ——— Data fetching ———
+
+// Fetch one day’s JSON (or [] if missing)
 async function fetchDay(year, month, day) {
   const dd  = String(day).padStart(2, '0');
   const url = `${S3_BASE_URL}/${year}/${month}/${dd}/processed.json?t=${Date.now()}`;
@@ -65,12 +67,12 @@ async function fetchDay(year, month, day) {
               .toLocaleDateString('en-US', LABEL_OPTIONS),
       summary: loc.actions || []
     }));
-  } catch {
+  } catch (e) {
     return [];
   }
 }
 
-// Load all days in a month into one flat array
+// Load an entire month’s worth of days
 async function loadMonthData(date) {
   const key = date.toLocaleDateString('en-US', DATE_FORMAT);
   if (travelData[key]) return travelData[key];
@@ -80,32 +82,29 @@ async function loadMonthData(date) {
   const days  = new Date(year, date.getMonth() + 1, 0).getDate();
 
   const perDay = await Promise.all(
-    Array.from({ length: days }, (_, i) =>
-      fetchDay(year, month, i + 1))
+    Array.from({ length: days }, (_, i) => fetchDay(year, month, i + 1))
   );
 
-  const locations = perDay.flat().sort(
-    (a, b) => new Date(a.date) - new Date(b.date)
-  );
+  const locations = perDay
+    .flat()
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   travelData[key] = locations;
   return locations;
 }
 
-// Draw the globe for currentDate
+// ——— Drawing the globe ———
+
 async function updateGlobe() {
   const monthYear = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
   const locations = await loadMonthData(currentDate);
 
-  // update header
-  timeDisplay.textContent = monthYear;
-
-  // Prev = disabled if at or before earliestDate
+  // header + nav buttons
+  timeDisplay.textContent       = monthYear;
   prevMonthBtn.disabled = !isAfter(currentDate, earliestDate);
-  // Next = disabled if at or after initialDate
   nextMonthBtn.disabled = !isBefore(currentDate, initialDate);
 
-  // build arcs
+  // build arcs between sequential points
   const arcs = [];
   for (let i = 0; i < locations.length - 1; i++) {
     const a = locations[i], b = locations[i + 1];
@@ -142,52 +141,50 @@ async function updateGlobe() {
     .arcStroke(0.5)
     .arcsTransitionDuration(1000);
 
-  // auto‑center on points if any
+  // auto‑center if there are points
   if (locations.length) {
-    const lats = locations.map(d => d.lat),
-          lngs = locations.map(d => d.lng);
-    const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2,
-          centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-    globe.pointOfView(
-      { lat: centerLat, lng: centerLng, altitude: 2 },
-      1000
-    );
+    const lats = locations.map(d => d.lat);
+    const lngs = locations.map(d => d.lng);
+    const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    globe.pointOfView({ lat: centerLat, lng: centerLng, altitude: 2 }, 1000);
   }
 }
 
 // hover tooltip
 function handlePointHover(pt) {
   if (!pt) return tooltip.style.display = 'none';
+
   tooltip.style.display = 'block';
   const rect = globeContainer.getBoundingClientRect();
-  tooltip.style.left = `${rect.left + 10}px`;
-  tooltip.style.top  = `${rect.top  + 10}px`;
-  tooltip.innerHTML  = `
+  tooltip.style.left  = `${rect.left + 10}px`;
+  tooltip.style.top   = `${rect.top  + 10}px`;
+
+  // NO nested backticks here — use single‑quoted strings:
+  tooltip.innerHTML = `
     <h3>${pt.name}</h3>
     <p><em>${pt.date}</em></p>
-    <ul>${pt.summary.map(s => `<li>${s}</li>`).join('')}
-    </ul>
+    <ul>${pt.summary.map(s => '<li>' + s + '</li>').join('')}</ul>
   `;
 }
 
 // click info‑panel
 function handlePointClick(pt) {
   if (!pt) return;
-  globe.pointOfView(
-    { lat: pt.lat, lng: pt.lng, altitude: 1.5 },
-    1000
-  );
+
+  globe.pointOfView({ lat: pt.lat, lng: pt.lng, altitude: 1.5 }, 1000);
+
   infoPanel.style.display = 'block';
   infoPanel.innerHTML = `
     <h2>${pt.name}</h2>
     <p><strong>Date:</strong> ${pt.date}</p>
     <h3>Activities:</h3>
-    <ul>${pt.summary.map(s => `<li>${s}</li>`).join('')}</ul>
+    <ul>${pt.summary.map(s => '<li>' + s + '</li>').join('')}</ul>
     <button onclick="infoPanel.style.display='none'">Close</button>
   `;
 }
 
-// navigate months
+// Prev/Next month handlers — fetch each month on demand
 prevMonthBtn.addEventListener('click', () => {
   currentDate.setMonth(currentDate.getMonth() - 1);
   updateGlobe();
@@ -198,10 +195,9 @@ nextMonthBtn.addEventListener('click', () => {
 });
 
 // resize handler
-window.addEventListener(
-  'resize',
-  () => globe.width(window.innerWidth).height(window.innerHeight)
-);
+window.addEventListener('resize', () => {
+  globe.width(window.innerWidth).height(window.innerHeight);
+});
 
-// initial render (only current month is fetched)
+// initial draw (only current month is fetched)
 updateGlobe();
