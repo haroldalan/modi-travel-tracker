@@ -16,26 +16,31 @@
       overflow: hidden;
     }
 
-    /* Globe canvas behind UI, but above stars */
+    /* Globe container above header */
     #globe-container {
       position: absolute;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      z-index: 1;
+      z-index: 2; /* above title, below controls */
     }
 
-    /* Header above globe, below controls */
+    /* Ensure the canvas is transparent */
+    #globe-container canvas {
+      background: transparent !important;
+    }
+
+    /* Header under globe, above stars */
     .title {
       position: absolute;
       top: 20px; left: 0; right: 0;
       text-align: center;
       font-size: 24px;
       text-shadow: 0 0 5px black;
-      z-index: 2;
+      z-index: 1;
       pointer-events: none;
     }
 
-    /* Controls, tooltip, and info-panel highest */
+    /* Controls, tooltip, and info-panel above everything */
     #info-panel,
     .tooltip,
     #controls {
@@ -94,8 +99,14 @@
   </style>
 </head>
 <body>
+  <!-- 1) Starry background behind all -->
+  <!-- 2) Globe canvas sits above the header -->
   <div id="globe-container"></div>
+
+  <!-- 3) Header over stars but under globe -->
   <div class="title">PM Narendra Modi's Travels</div>
+
+  <!-- 4) Tooltip, info-panel, and controls on top -->
   <div id="info-panel"></div>
   <div class="tooltip"></div>
   <div id="controls">
