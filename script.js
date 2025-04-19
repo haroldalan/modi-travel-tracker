@@ -11,7 +11,7 @@ const nextMonthBtn   = document.getElementById('next-month');
 
 // State
 let currentDate     = new Date();
-let travelData      = {};
+let travelData      = {};   // e.g. { "April 2025": [ …locations ] }
 let availableMonths = [];
 
 // Initialize globe
@@ -25,7 +25,10 @@ const globe = Globe()
   .height(window.innerHeight)
   (globeContainer);
 
-// Load all days’ processed.json for a month
+// Make India the default view
+globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
+
+// Load every day’s processed.json for a given month
 async function loadMonthData(date) {
   const monthYear = date.toLocaleDateString('en-US', DATE_FORMAT);
   if (travelData[monthYear]) return travelData[monthYear];
@@ -34,54 +37,68 @@ async function loadMonthData(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const daysInMonth = new Date(year, date.getMonth() + 1, 0).getDate();
 
+  // Fetch each day’s JSON in parallel
   const fetches = Array.from({ length: daysInMonth }, (_, i) => {
     const dd  = String(i + 1).padStart(2, '0');
     const url = `${S3_BASE_URL}/${year}/${month}/${dd}/processed.json?t=${Date.now()}`;
     return fetch(url)
-      .then(r => {
-        if (!r.ok) throw new Error(`Day ${dd} not found`);
-        return r.json();
+      .then(res => {
+        if (!res.ok) throw new Error(`Day ${dd} not found`);
+        return res.json();
       })
-      .then(obj => obj.locations || [])
+      .then(obj => {
+        // Gracefully handle missing or empty locations
+        if (!Array.isArray(obj.locations)) return [];
+        // Attach the article-level date to each location
+        return obj.locations.map(loc => ({
+          ...loc,
+          date: obj.date   // e.g. "2025-04-18"
+        }));
+      })
       .catch(err => {
         console.warn(err.message);
         return [];
       });
   });
 
-  // wait all, flatten
-  const allLocations = (await Promise.all(fetches)).flat();
+  // Wait for all days, then flatten into one array
+  const monthItems = (await Promise.all(fetches)).flat();
 
-  // map into globe shape
-  const locations = allLocations
-    .map(loc => ({
-      lat: loc.lat,
-      lng: loc.lng,
-      name: loc.name,
-      date: new Date(loc.date || obj.date).toLocaleDateString('en-US', {
+  // Map into the shape Three‑Globe expects
+  const locations = monthItems
+    .map(({ lat, lng, name, actions = [], date }) => ({
+      lat,
+      lng,
+      name,
+      date: new Date(date).toLocaleDateString('en-US', {
         month: 'short', day: 'numeric', year: 'numeric'
       }),
-      summary: loc.actions?.map(a => `• ${a}`) || []
+      summary: actions.map(a => `• ${a}`)
     }))
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
+  // Cache and register this month
   travelData[monthYear] = locations;
-  availableMonths = Array.from(new Set([...availableMonths, monthYear]))
-                        .sort((a, b) => new Date(a) - new Date(b));
+  if (!availableMonths.includes(monthYear)) {
+    availableMonths.push(monthYear);
+    availableMonths.sort((a, b) => new Date(a) - new Date(b));
+  }
 
   console.log(`Loaded ${locations.length} points for ${monthYear}`);
   return locations;
 }
 
+// Render the globe for the currentDate’s month
 async function updateGlobe() {
   const monthYear = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
   const locations = await loadMonthData(currentDate);
 
-  timeDisplay.textContent = monthYear;
-  prevMonthBtn.disabled = availableMonths.indexOf(monthYear) === 0;
-  nextMonthBtn.disabled = availableMonths.indexOf(monthYear) === availableMonths.length - 1;
+  // Update header & nav buttons
+  timeDisplay.textContent      = monthYear;
+  prevMonthBtn.disabled        = availableMonths.indexOf(monthYear) === 0;
+  nextMonthBtn.disabled        = availableMonths.indexOf(monthYear) === availableMonths.length - 1;
 
-  // build arcs
+  // Build arcs between consecutive points
   const arcs = [];
   for (let i = 0; i < locations.length - 1; i++) {
     arcs.push({
@@ -96,6 +113,7 @@ async function updateGlobe() {
     });
   }
 
+  // Plot points & arcs
   globe
     .pointsData(locations)
     .pointLat(d => d.lat)
@@ -119,6 +137,7 @@ async function updateGlobe() {
     .arcStroke(0.5)
     .arcsTransitionDuration(1000);
 
+  // If we have points, recenter the globe on them
   if (locations.length) {
     const lats = locations.map(d => d.lat);
     const lngs = locations.map(d => d.lng);
@@ -129,7 +148,7 @@ async function updateGlobe() {
   }
 }
 
-// Navigation
+// Month navigation handlers
 prevMonthBtn.addEventListener('click', () => {
   const idx = availableMonths.indexOf(currentDate.toLocaleDateString('en-US', DATE_FORMAT));
   if (idx > 0) {
@@ -145,11 +164,14 @@ nextMonthBtn.addEventListener('click', () => {
   }
 });
 
+// (Keep your existing hover/click tooltips)
 function handlePointHover(pt) { /* … */ }
 function handlePointClick(pt) { /* … */ }
 
+// Make the globe responsive
 window.addEventListener('resize', () => {
   globe.width(window.innerWidth).height(window.innerHeight);
 });
 
+// Kick everything off
 updateGlobe();
