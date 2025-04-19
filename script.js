@@ -27,11 +27,15 @@ const globe = Globe()
   .height(window.innerHeight)
   (globeContainer);
 
-// default POV: India
-globe.controls().autoRotate = false;
+// Tweak zoom sensitivity
+const controls = globe.controls();
+controls.enableZoom = true;
+controls.zoomSpeed  = 3;
+
+// Default POV: India
 globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
 
-// Fetch one day’s processed.json → array of locations (or [] on 404)
+// Fetch one day's processed.json → array of locations (or [] on 404)
 async function fetchDay(year, month, day) {
   const dd  = String(day).padStart(2, '0');
   const url = `${S3_BASE_URL}/${year}/${month}/${dd}/processed.json?t=${Date.now()}`;
@@ -39,65 +43,60 @@ async function fetchDay(year, month, day) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('Not found');
     const obj = await res.json();
-    // use the file’s own "date" field
-    const fileDate = obj.date; 
+    const fileDate = obj.date;
     return (obj.locations || []).map(loc => ({
       lat:     loc.lat,
       lng:     loc.lng,
       name:    loc.name,
       date:    new Date(fileDate).toLocaleDateString('en-US', LABEL_OPTIONS),
-      summary: loc.actions?.map(a => `• ${a}`) || []
+      summary: loc.actions || []    // raw text; list items will bulletify
     }));
   } catch {
     return [];
   }
 }
 
-// Load a full month’s data by hitting each day 1…N
+// Load a full month's data by fetching each day in parallel
 async function loadMonthData(date) {
   const monthYear = date.toLocaleDateString('en-US', DATE_FORMAT);
   if (travelData[monthYear]) return travelData[monthYear];
 
   const year        = date.getFullYear();
   const month       = String(date.getMonth() + 1).padStart(2, '0');
-  const daysInMonth = new Date(year, date.getMonth()+1, 0).getDate();
+  const daysInMonth = new Date(year, date.getMonth() + 1, 0).getDate();
 
-  // fetch all days in parallel
   const perDay = await Promise.all(
-    Array.from({ length: daysInMonth }, (_, i) => fetchDay(year, month, i+1))
+    Array.from({ length: daysInMonth }, (_, i) => fetchDay(year, month, i + 1))
   );
 
-  // flatten & sort
   const locations = perDay
     .flat()
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  // cache & register month
   travelData[monthYear] = locations;
   if (!availableMonths.includes(monthYear)) {
     availableMonths.push(monthYear);
     availableMonths.sort((a, b) => new Date(a) - new Date(b));
   }
 
-  console.log(`Loaded ${locations.length} points for ${monthYear}`);
+  console.log(`Loaded ${locations.length} points for ${monthYear}`);
   return locations;
 }
 
-// Draw points & arcs for currentDate’s month
+// Render the current month's data
 async function updateGlobe() {
   const monthYear = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
   const locations = await loadMonthData(currentDate);
 
-  // update header & nav buttons
   timeDisplay.textContent = monthYear;
   const idx = availableMonths.indexOf(monthYear);
   prevMonthBtn.disabled = idx <= 0;
   nextMonthBtn.disabled = idx < 0 || idx === availableMonths.length - 1;
 
-  // build arcs
+  // Build arcs between consecutive points
   const arcs = [];
   for (let i = 0; i < locations.length - 1; i++) {
-    const a = locations[i], b = locations[i+1];
+    const a = locations[i], b = locations[i + 1];
     arcs.push({
       startLat: a.lat, startLng: a.lng,
       endLat:   b.lat, endLng:   b.lng,
@@ -108,7 +107,6 @@ async function updateGlobe() {
     });
   }
 
-  // plot
   globe
     .pointsData(locations)
     .pointLat(d => d.lat)
@@ -132,7 +130,7 @@ async function updateGlobe() {
     .arcStroke(0.5)
     .arcsTransitionDuration(1000);
 
-  // re‑center if we have points
+  // Re-center if we have points
   if (locations.length) {
     const lats = locations.map(d => d.lat);
     const lngs = locations.map(d => d.lng);
@@ -142,11 +140,10 @@ async function updateGlobe() {
   }
 }
 
-// hover shows tooltip
+// Show tooltip on hover
 function handlePointHover(pt) {
   if (pt) {
     tooltip.style.display = 'block';
-    // position near top‑left of globe container
     const rect = globeContainer.getBoundingClientRect();
     tooltip.style.left = `${rect.left + window.scrollX + 10}px`;
     tooltip.style.top  = `${rect.top  + window.scrollY + 10}px`;
@@ -160,12 +157,9 @@ function handlePointHover(pt) {
   }
 }
 
-// click opens info‑panel
+// Show info panel on click
 function handlePointClick(pt) {
-  if (!pt) return;
-  // focus globe
   globe.pointOfView({ lat: pt.lat, lng: pt.lng, altitude: 1.5 }, 1000);
-  // populate panel
   infoPanel.style.display = 'block';
   infoPanel.innerHTML = `
     <h2>${pt.name}</h2>
@@ -176,26 +170,11 @@ function handlePointClick(pt) {
   `;
 }
 
-// month nav
+// Month navigation
 prevMonthBtn.addEventListener('click', () => {
   const idx = availableMonths.indexOf(currentDate.toLocaleDateString('en-US', DATE_FORMAT));
-  if (idx > 0) {
-    currentDate = new Date(availableMonths[idx - 1]);
-    updateGlobe();
-  }
+  if (idx > 0) currentDate = new Date(availableMonths[idx - 1]), updateGlobe();
 });
 nextMonthBtn.addEventListener('click', () => {
   const idx = availableMonths.indexOf(currentDate.toLocaleDateString('en-US', DATE_FORMAT));
-  if (idx >= 0 && idx < availableMonths.length - 1) {
-    currentDate = new Date(availableMonths[idx + 1]);
-    updateGlobe();
-  }
-});
-
-// resize handler
-window.addEventListener('resize', () => {
-  globe.width(window.innerWidth).height(window.innerHeight);
-});
-
-// kick off
-updateGlobe();
+  if (idx >= 0 && idx < availableMonths.length - 1) current
