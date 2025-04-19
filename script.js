@@ -64,6 +64,18 @@ const CONFIG = {
   }
   
   const globe = initGlobe();
+
+// super‑boost wheel zoom by directly altering camera altitude
+DOM.globeContainer.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const dir = e.deltaY > 0 ? 1 : -1;            // wheel down → zoom in
+  const cam = globe.camera();                   // three.js camera
+
+  // Adjust distance linearly – 0.3 gives a snappy feel
+  const factor = 1 + dir * 0.3;                 // tweak 0.3 ↔ 0.05 to taste
+  cam.position.multiplyScalar(factor);
+  cam.updateProjectionMatrix();
+});
   
   // Date helpers
   function isBefore(a, b) {
