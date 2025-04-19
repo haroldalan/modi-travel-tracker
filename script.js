@@ -49,10 +49,10 @@ const CONFIG = {
     // Configure controls
     const controls = globe.controls();
     controls.enableZoom = true;
-    controls.zoomSpeed = 2.0; // Increased from 10 (higher values make it faster)
-    controls.enableDamping = true; // Adds smooth deceleration
-    controls.dampingFactor = 0.05; // Adjust damping effect
-    controls.minDistance = 1.5;  // Minimum zoom distance
+    controls.zoomSpeed = 4.0; // Increased from 10 (higher values make it faster)
+    //controls.enableDamping = true; // Adds smooth deceleration
+    //controls.dampingFactor = 0.05; // Adjust damping effect
+    controls.minDistance = 1;  // Minimum zoom distance
     controls.maxDistance = 10;   // Maximum zoom distance
   
     // Default POV: India
