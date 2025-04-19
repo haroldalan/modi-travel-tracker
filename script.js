@@ -44,13 +44,14 @@ const CONFIG = {
       .atmosphereColor('rgba(0, 150, 255, 0.2)')
       .width(window.innerWidth)
       .height(window.innerHeight)
-      (DOM.globeContainer);
+      (globeContainer);
   
     // Configure controls
     const controls = globe.controls();
     controls.enableZoom = true;
-    controls.zoomSpeed = 10;
-    controls.enablePan = false;
+    controls.zoomSpeed = 2.0;  // Increased from original 1.0
+    controls.minDistance = 1.2; // Closer zoom allowed
+    controls.maxDistance = 10;  // Farther zoom allowed
   
     // Default POV: India
     globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
@@ -179,17 +180,21 @@ const CONFIG = {
   
   // Globe rendering
   function createArcs(locations) {
-    return locations.slice(0, -1).map((a, i) => ({
-      startLat: a.lat,
-      startLng: a.lng,
-      endLat: locations[i + 1].lat,
-      endLng: locations[i + 1].lng,
-      color: [
-        ['rgba(255,102,0,0.6)', 'rgba(255,102,0,0.3)'],
-        ['rgba(255,102,0,0.6)', 'rgba(255,102,0,0.3)']
-      ]
-    }));
-  }
+      return locations.slice(0, -1).map((a, i) => ({
+        startLat: a.lat,
+        startLng: a.lng,
+        endLat: locations[i + 1].lat,
+        endLng: locations[i + 1].lng,
+        color: 'rgba(255, 102, 0, 0.8)',
+        stroke: 0.5, // Thinner line
+        arcSharpness: 1.0, // Straighter lines
+        // Arrow head configuration
+        startArrowSize: 0,
+        endArrowSize: 3, // Size of arrow head
+        endArrowColor: 'rgba(255, 102, 0, 0.8)',
+        endArrowPosition: 1 // At end of line
+      }));
+    }
   
   function centerGlobeOnLocations(locations) {
     if (locations.length === 0) {
@@ -241,11 +246,15 @@ const CONFIG = {
       .onPointClick(handlePointClick)
       .arcsData(arcs)
       .arcColor('color')
-      .arcDashLength(0.5)
-      .arcDashGap(1)
-      .arcDashAnimateTime(2000)
-      .arcStroke(0.5)
-      .arcsTransitionDuration(1000);
+      .arcStroke('stroke')
+      .arcDashLength(0) // No dashes
+      .arcDashGap(0)    // No gaps
+      .arcDashAnimateTime(0) // No animation
+      .arcSharpness('arcSharpness')
+      .arcStartArrowSize('startArrowSize')
+      .arcEndArrowSize('endArrowSize')
+      .arcEndArrowColor('endArrowColor')
+      .arcEndArrowPosition('endArrowPosition');
   
     centerGlobeOnLocations(locations);
   }
