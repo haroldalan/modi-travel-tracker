@@ -16,7 +16,7 @@ const nextMonthBtn   = document.getElementById('next-month');
 // Date bounds
 const initialDate  = new Date();
 const earliestDate = new Date(initialDate);
-earestDate.setFullYear(earliestDate.getFullYear() - 2);
+earliestDate.setFullYear(earliestDate.getFullYear() - 2);
 
 // State
 let currentDate = new Date(initialDate);
@@ -51,11 +51,11 @@ controls.zoomSpeed  = 10;
 // Default POV: India
 globe.pointOfView({ lat: 20.5937, lng: 78.9629, altitude: 2 }, 0);
 
-// A group to hold our arrows
-const arrowsGroup = new window.THREE.Group();
+// Group to hold arrows
+const arrowsGroup = new THREE.Group();
 globe.scene().add(arrowsGroup);
 
-// Helper to wipe out old arrows
+// Clear existing arrows
 function clearArrows() {
   while (arrowsGroup.children.length) {
     arrowsGroup.remove(arrowsGroup.children[0]);
@@ -64,14 +64,13 @@ function clearArrows() {
 
 // Fetch one day’s JSON (or [] if missing)
 async function fetchDay(year, month, day) {
-  const dd  = String(day).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
   const url = `${S3_BASE_URL}/${year}/${month}/${dd}/processed.json?t=${Date.now()}`;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error('Not found');
     const obj = await res.json();
-    const displayDate = new Date(obj.date)
-      .toLocaleDateString('en-US', LABEL_OPTIONS);
+    const displayDate = new Date(obj.date).toLocaleDateString('en-US', LABEL_OPTIONS);
 
     // New format: single location + actions
     if (obj.location) {
@@ -83,7 +82,7 @@ async function fetchDay(year, month, day) {
         summary: obj.actions || []
       }];
     }
-    // Fallback old format
+    // Fallback to old format
     if (Array.isArray(obj.locations)) {
       return obj.locations.map(loc => ({
         lat:     loc.lat,
@@ -99,7 +98,7 @@ async function fetchDay(year, month, day) {
   }
 }
 
-// Load an entire month’s worth of days
+// Load a month’s data
 async function loadMonthData(date) {
   const key = date.toLocaleDateString('en-US', DATE_FORMAT);
   if (travelData[key]) return travelData[key];
@@ -108,93 +107,94 @@ async function loadMonthData(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const days  = new Date(year, date.getMonth() + 1, 0).getDate();
 
-  const perDay = await Promise.all(
+  const entries = await Promise.all(
     Array.from({ length: days }, (_, i) => fetchDay(year, month, i + 1))
   );
 
-  const locations = perDay
-    .flat()
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-
+  const locations = entries.flat().sort((a, b) => new Date(a.date) - new Date(b.date));
   travelData[key] = locations;
   return locations;
 }
 
-// Convert lat/lng → Three.js Vector3 on unit sphere
+// Convert lat/lng to 3D vector
 function latLngToVector(lat, lng) {
-  const φ = (90 - lat) * (Math.PI / 180);
-  const θ = (lng + 180) * (Math.PI / 180);
+  const phi = (90 - lat) * Math.PI / 180;
+  const theta = (lng + 180) * Math.PI / 180;
   const r = globe.getGlobeRadius();
-  return new window.THREE.Vector3(
-    r * Math.sin(φ) * Math.cos(θ),
-    r * Math.cos(φ),
-    r * Math.sin(φ) * Math.sin(θ)
+  return new THREE.Vector3(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
   );
 }
 
-// Tooltip hover\ nfunction handlePointHover(pt) {
-  if (!pt) return tooltip.style.display = 'none';
+// Tooltip hover handler
+function handlePointHover(point) {
+  if (!point) {
+    tooltip.style.display = 'none';
+    return;
+  }
   tooltip.style.display = 'block';
   const rect = globeContainer.getBoundingClientRect();
-  tooltip.style.left  = `${rect.left + 10}px`; 
-  tooltip.style.top   = `${rect.top  + 10}px`;
+  tooltip.style.left = `${rect.left + 10}px`;
+  tooltip.style.top = `${rect.top + 10}px`;
   tooltip.innerHTML = `
-    <h3>${pt.name}</h3>
-    <p><em>${pt.date}</em></p>
-    <ul>${pt.summary.map(s => '<li>' + s + '</li>').join('')}</ul>
+    <h3>${point.name}</h3>
+    <p><em>${point.date}</em></p>
+    <ul>${point.summary.map(s => `<li>${s}</li>`).join('')}</ul>
   `;
 }
 
-// Click to show info panel
-function handlePointClick(pt) {
-  if (!pt) return;
-  globe.pointOfView({ lat: pt.lat, lng: pt.lng, altitude: 1.5 }, 1000);
+// Point click handler
+function handlePointClick(point) {
+  if (!point) return;
+  globe.pointOfView({ lat: point.lat, lng: point.lng, altitude: 1.5 }, 1000);
   infoPanel.style.display = 'block';
   infoPanel.innerHTML = `
-    <h2>${pt.name}</h2>
-    <p><strong>Date:</strong> ${pt.date}</p>
+    <h2>${point.name}</h2>
+    <p><strong>Date:</strong> ${point.date}</p>
     <h3>Activities:</h3>
-    <ul>${pt.summary.map(s => '<li>' + s + '</li>').join('')}</ul>
+    <ul>${point.summary.map(s => `<li>${s}</li>`).join('')}</ul>
     <button onclick="infoPanel.style.display='none'">Close</button>
   `;
 }
 
-// Update globe visualization
+// Update the globe and arrows
 async function updateGlobe() {
-  // Header + navigation
-  const monthYear = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
-  timeDisplay.textContent       = monthYear;
+  // Update header & buttons
+  timeDisplay.textContent = currentDate.toLocaleDateString('en-US', DATE_FORMAT);
   prevMonthBtn.disabled = !isAfter(currentDate, earliestDate);
   nextMonthBtn.disabled = !isBefore(currentDate, initialDate);
 
   const locations = await loadMonthData(currentDate);
 
-  // Clear old arrows and redraw
+  // Clear old arrows
   clearArrows();
+
+  // Draw arrows
   for (let i = 0; i < locations.length - 1; i++) {
-    const a = locations[i], b = locations[i + 1];
-    const start = latLngToVector(a.lat, a.lng);
-    const end   = latLngToVector(b.lat, b.lng);
-    const dir   = new window.THREE.Vector3().subVectors(end, start).normalize();
+    const from = locations[i], to = locations[i + 1];
+    const start = latLngToVector(from.lat, from.lng);
+    const end   = latLngToVector(to.lat, to.lng);
+    const dir   = new THREE.Vector3().subVectors(end, start).normalize();
     const len   = start.distanceTo(end);
 
-    const arrow = new window.THREE.ArrowHelper(
-      dir, start, len,
-      0xff6600, 0.3, 0.1
-    );
-    arrow.line.material.opacity     = 0.3;
+    const arrow = new THREE.ArrowHelper(dir, start, len, 0xff6600, 0.3, 0.1);
+    arrow.line.material.opacity = 0.3;
     arrow.line.material.transparent = true;
     arrowsGroup.add(arrow);
 
+    // Pulse head
     let growing = true;
     setInterval(() => {
-      const s = arrow.cone.scale.x + (growing ? 0.005 : -0.005);
-      arrow.setLength(len, s, s);
-      growing = s < 0.5;
+      const scale = arrow.cone.scale.x + (growing ? 0.005 : -0.005);
+      arrow.setLength(len, scale, scale);
+      if (scale > 0.5) growing = false;
+      if (scale < 0.2) growing = true;
     }, 100);
   }
 
-  // Plot points (smaller markers)
+  // Plot points
   globe
     .pointsData(locations)
     .pointLat(d => d.lat)
@@ -211,7 +211,7 @@ async function updateGlobe() {
     .onPointHover(handlePointHover)
     .onPointClick(handlePointClick);
 
-  // Auto‑center if there are points
+  // Auto-center
   if (locations.length) {
     const lats = locations.map(d => d.lat);
     const lngs = locations.map(d => d.lng);
@@ -230,7 +230,6 @@ nextMonthBtn.addEventListener('click', () => {
   currentDate.setMonth(currentDate.getMonth() + 1);
   updateGlobe();
 });
-
 window.addEventListener('resize', () => {
   globe.width(window.innerWidth).height(window.innerHeight);
 });
